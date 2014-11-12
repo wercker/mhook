@@ -1,0 +1,129 @@
+package main
+
+import (
+	"fmt"
+	"github.com/codegangsta/cli"
+	"github.com/crowdmob/goamz/aws"
+	"github.com/crowdmob/goamz/s3"
+	"io"
+	"os"
+	"path"
+	"time"
+)
+
+// Simple command-line tool to fetch files from S3 that have been stored using
+// the `mhook` ultimate freshness layout (MUFL).
+//
+// Where available it will attempt to use the EC2 metadata to get credentials.
+//
+// The MUFL layout:
+//
+// s3://$bucket/$project/$branch/HEAD				<- contains id of latest commit
+// s3://$bucket/$project/$branch/latest/*		<- latest artifacts
+// s3://$bucket/$project/$branch/$commit/*	<- artifacts at commit id
+
+type FetchOptions struct {
+	Bucket      string
+	Project     string
+	Branch      string
+	Commit      string
+	Target      string
+	Destination string
+	Auth        aws.Auth
+	Region      string
+}
+
+type Credentials struct {
+	AccessKey    string
+	SecretKey    string
+	SessionToken string
+	Expiration   string
+}
+
+func Fetch(opts *FetchOptions) {
+	path := fmt.Sprintf("/%s/%s/%s/%s", opts.Project, opts.Branch, opts.Commit, opts.Target)
+	println(path)
+	conn := s3.New(opts.Auth, aws.Regions[opts.Region])
+	bucket := conn.Bucket(opts.Bucket)
+	src, err := bucket.GetReader(path)
+	if err != nil {
+		panic(err)
+	}
+	defer src.Close()
+
+	dst, err := os.Create(opts.Destination)
+	if err != nil {
+		panic(err)
+	}
+	defer dst.Close()
+
+	// write the file
+	_, err = io.Copy(dst, src)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func main() {
+	app := cli.NewApp()
+	app.Name = "mhook"
+	app.Usage = "[global options] path [dest]"
+	app.Flags = []cli.Flag{
+		cli.StringFlag{Name: "bucket, b", Value: "", Usage: "S3 bucket"},
+		cli.StringFlag{Name: "project, p", Value: "", Usage: "project name"},
+		cli.StringFlag{Name: "branch", Value: "master", Usage: "git branch"},
+		cli.StringFlag{Name: "commit", Value: "latest", Usage: "git commit (or 'latest')"},
+		cli.StringFlag{Name: "accessKey", Value: "", Usage: "AWS access key", EnvVar: "AWS_ACCESS_KEY_ID"},
+		cli.StringFlag{Name: "secretKey", Value: "", Usage: "AWS access key", EnvVar: "AWS_SECRET_ACCESS_KEY"},
+		cli.StringFlag{Name: "region", Value: "us-east-1", Usage: "AWS region"},
+	}
+	app.Action = func(c *cli.Context) {
+		// Check for credentials and well-formedness, then call Fetch
+
+		if c.String("bucket") == "" {
+			println("Error: bucket cannot be empty.")
+			cli.ShowAppHelp(c)
+			os.Exit(1)
+		}
+
+		if c.String("project") == "" {
+			println("Error: project cannot be empty.")
+			cli.ShowAppHelp(c)
+			os.Exit(1)
+		}
+
+		if len(c.Args()) < 1 {
+			cli.ShowAppHelp(c)
+			os.Exit(1)
+		}
+
+		opts := &FetchOptions{
+			Target:  c.Args()[0],
+			Bucket:  c.String("bucket"),
+			Project: c.String("project"),
+			Branch:  c.String("branch"),
+			Commit:  c.String("commit"),
+			Region:  c.String("region"),
+		}
+
+		opts.Target = c.Args()[0]
+
+		if len(c.Args()) < 2 {
+			// Our destination file will be the same name as our basename
+			opts.Destination = path.Base(c.Args()[0])
+		} else {
+			opts.Destination = c.Args()[1]
+		}
+
+		// This function checks the keys, the environment vars, the instance metadata, and a cred file
+		auth, err := aws.GetAuth(c.String("accessKey"), c.String("secretKey"), "", time.Now().Add(time.Minute*5))
+		if err != nil {
+			panic(err)
+		}
+		opts.Auth = auth
+
+		Fetch(opts)
+	}
+
+	app.Run(os.Args)
+}
