@@ -19,3 +19,4 @@ deploy:
         bucket-url: $AWS_BUCKET_URL/$WERCKER_GIT_BRANCH/
         delete-removed: false
         source-dir: "."
+        opts: "--acl-public"
