@@ -13,6 +13,11 @@ The MUFL layout::
   s3://$bucket/$project/$branch/$commit/*   <- artifacts at commit id
 
 
+Example::
+
+  ./mhook -b wercker-development -p mhook darwin_amd64/build mhook.darwin_amd64
+
+
 Usage::
 
   NAME:
