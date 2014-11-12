@@ -15,6 +15,8 @@ The MUFL layout::
 
 Example::
 
+  curl -o mhook https://s3.amazonaws.com/wercker-development/mhook/master/latest/linux_amd64/build
+  chmod +x mhook
   ./mhook -b wercker-development -p mhook darwin_amd64/build mhook.darwin_amd64
 
 
