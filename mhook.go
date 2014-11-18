@@ -71,10 +71,10 @@ func main() {
 	app.Flags = []cli.Flag{
 		cli.StringFlag{Name: "bucket, b", Value: "", Usage: "S3 bucket"},
 		cli.StringFlag{Name: "project, p", Value: "", Usage: "project name"},
-		cli.StringFlag{Name: "branch", Value: "master", Usage: "git branch"},
-		cli.StringFlag{Name: "commit", Value: "latest", Usage: "git commit (or 'latest')"},
-		cli.StringFlag{Name: "accessKey", Value: "", Usage: "AWS access key", EnvVar: "AWS_ACCESS_KEY_ID"},
-		cli.StringFlag{Name: "secretKey", Value: "", Usage: "AWS access key", EnvVar: "AWS_SECRET_ACCESS_KEY"},
+		cli.StringFlag{Name: "branch, r", Value: "master", Usage: "git branch"},
+		cli.StringFlag{Name: "commit, c", Value: "latest", Usage: "git commit (or 'latest')"},
+		cli.StringFlag{Name: "access-key", Value: "", Usage: "AWS access key", EnvVar: "AWS_ACCESS_KEY_ID"},
+		cli.StringFlag{Name: "secret-key", Value: "", Usage: "AWS access key", EnvVar: "AWS_SECRET_ACCESS_KEY"},
 		cli.StringFlag{Name: "region", Value: "us-east-1", Usage: "AWS region"},
 	}
 	app.Action = func(c *cli.Context) {
@@ -116,7 +116,7 @@ func main() {
 		}
 
 		// This function checks the keys, the environment vars, the instance metadata, and a cred file
-		auth, err := aws.GetAuth(c.String("accessKey"), c.String("secretKey"), "", time.Now().Add(time.Minute*5))
+		auth, err := aws.GetAuth(c.String("access-key"), c.String("secret-key"), "", time.Now().Add(time.Minute*5))
 		if err != nil {
 			panic(err)
 		}
