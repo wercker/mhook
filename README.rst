@@ -39,8 +39,8 @@ Usage::
      --project, -p 	project name
      --branch 'master'	git branch
      --commit 'latest'	git commit (or 'latest')
-     --accessKey 		AWS access key [$AWS_ACCESS_KEY_ID]
-     --secretKey 		AWS access key [$AWS_SECRET_ACCESS_KEY]
+     --access-key 		AWS access key [$AWS_ACCESS_KEY_ID]
+     --secret-key 		AWS access key [$AWS_SECRET_ACCESS_KEY]
      --region 'us-east-1'	AWS region
      --help, -h		show help
      --version, -v	print the version
