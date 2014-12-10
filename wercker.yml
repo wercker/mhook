@@ -1,6 +1,7 @@
 box: tcnksm/gox@0.1.0
 build:
   steps:
+      - setup-go-workspace@1.0.4
       - script:
           name: install
           code: go get -v -d ./...
