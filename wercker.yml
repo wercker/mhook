@@ -4,7 +4,11 @@ build:
       - script:
           name: install
           code: go get -v -d ./...
+
+      - golint
+
       - tcnksm/gox
+
       - script:
           name: prepare
           code: |
