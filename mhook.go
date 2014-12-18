@@ -79,15 +79,19 @@ func Fetch(opts *FetchOptions) {
 	}
 	defer src.Close()
 
-	dst, err := os.Create(opts.Destination)
+	tmpDst, err := ioutil.TempFile("", opts.Project)
 	if err != nil {
 		panic(err)
 	}
-	defer dst.Close()
+	defer tmpDst.Close()
 
-	// write the file
-	_, err = io.Copy(dst, src)
-	if err != nil {
+	// write to temporary file
+	if _, err = io.Copy(tmpDst, src); err != nil {
+		panic(err)
+	}
+
+	// atomically rename to destiation
+	if err = os.Rename(tmpDst.Name(), opts.Destination); err != nil {
 		panic(err)
 	}
 }
