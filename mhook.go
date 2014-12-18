@@ -7,7 +7,6 @@ import (
 	"github.com/crowdmob/goamz/aws"
 	"github.com/crowdmob/goamz/s3"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
@@ -44,11 +43,17 @@ type Credentials struct {
 }
 
 func readMD5Sum(path string) string {
-	content, err := ioutil.ReadFile(path)
+	f, err := os.Open(path)
 	if err != nil {
 		return ""
 	}
-	return fmt.Sprintf("%x", md5.Sum(content))
+	defer f.Close()
+	hasher := md5.New()
+
+	if _, err := io.Copy(hasher, f); err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%x", hasher.Sum(nil))
 }
 
 func GetReaderETag(b *s3.Bucket, path string, etag string) (rc io.ReadCloser, err error) {
@@ -66,7 +71,6 @@ func GetReaderETag(b *s3.Bucket, path string, etag string) (rc io.ReadCloser, er
 
 func Fetch(opts *FetchOptions) {
 	path := fmt.Sprintf("/%s/%s/%s/%s", opts.Project, opts.Branch, opts.Commit, opts.Target)
-	println(path)
 	conn := s3.New(opts.Auth, aws.Regions[opts.Region])
 	bucket := conn.Bucket(opts.Bucket)
 
