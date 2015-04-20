@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/md5"
 	"fmt"
+	"github.com/andrew-d/go-termutil"
 	"github.com/cheggaaa/pb"
 	"github.com/codegangsta/cli"
 	"github.com/crowdmob/goamz/aws"
@@ -27,14 +28,15 @@ import (
 // s3://$bucket/$project/$branch/$commit/*	<- artifacts at commit id
 
 type FetchOptions struct {
-	Bucket      string
-	Project     string
-	Branch      string
-	Commit      string
-	Target      string
-	Destination string
-	Auth        aws.Auth
-	Region      string
+	Bucket       string
+	Project      string
+	Branch       string
+	Commit       string
+	Target       string
+	Destination  string
+	Auth         aws.Auth
+	Region       string
+	ShowProgress bool
 }
 
 type Credentials struct {
@@ -92,7 +94,9 @@ func Fetch(opts *FetchOptions) {
 	defer tmpDst.Close()
 
 	bar := pb.New(int(resp.ContentLength)).SetUnits(pb.U_BYTES)
-	bar.Start()
+	if opts.ShowProgress {
+		bar.Start()
+	}
 	writer := io.MultiWriter(tmpDst, bar)
 
 	// write to temporary file
@@ -140,12 +144,13 @@ func main() {
 		}
 
 		opts := &FetchOptions{
-			Target:  c.Args()[0],
-			Bucket:  c.String("bucket"),
-			Project: c.String("project"),
-			Branch:  c.String("branch"),
-			Commit:  c.String("commit"),
-			Region:  c.String("region"),
+			Target:       c.Args()[0],
+			Bucket:       c.String("bucket"),
+			Project:      c.String("project"),
+			Branch:       c.String("branch"),
+			Commit:       c.String("commit"),
+			Region:       c.String("region"),
+			ShowProgress: termutil.Isatty(os.Stdout.Fd()),
 		}
 
 		opts.Target = c.Args()[0]
