@@ -58,7 +58,7 @@ func readMD5Sum(path string) string {
 	return fmt.Sprintf("%x", hasher.Sum(nil))
 }
 
-func GetReaderETag(b *s3.Bucket, path string, etag string) (*http.Response, error) {
+func GetResponseETag(b *s3.Bucket, path string, etag string) (*http.Response, error) {
 	headers := make(http.Header)
 	headers.Add("If-None-Match", etag)
 	resp, err := b.GetResponseWithHeaders(path, headers)
@@ -76,7 +76,7 @@ func Fetch(opts *FetchOptions) {
 	conn := s3.New(opts.Auth, aws.Regions[opts.Region])
 	bucket := conn.Bucket(opts.Bucket)
 
-	resp, err := GetReaderETag(bucket, path, readMD5Sum(opts.Destination))
+	resp, err := GetResponseETag(bucket, path, readMD5Sum(opts.Destination))
 	if err != nil {
 		panic(err)
 	}
