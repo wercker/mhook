@@ -4,3 +4,4 @@ import:
   - package: github.com/codegangsta/cli
   - package: github.com/crowdmob/goamz/aws
   - package: github.com/crowdmob/goamz/s3
+  - package: github.com/cheggaaa/pb
