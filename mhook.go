@@ -3,10 +3,12 @@ package main
 import (
 	"crypto/md5"
 	"fmt"
+	"github.com/cheggaaa/pb"
 	"github.com/codegangsta/cli"
 	"github.com/crowdmob/goamz/aws"
 	"github.com/crowdmob/goamz/s3"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
@@ -56,12 +58,12 @@ func readMD5Sum(path string) string {
 	return fmt.Sprintf("%x", hasher.Sum(nil))
 }
 
-func GetReaderETag(b *s3.Bucket, path string, etag string) (rc io.ReadCloser, err error) {
+func GetReaderETag(b *s3.Bucket, path string, etag string) (*http.Response, error) {
 	headers := make(http.Header)
 	headers.Add("If-None-Match", etag)
 	resp, err := b.GetResponseWithHeaders(path, headers)
 	if resp != nil {
-		return resp.Body, err
+		return resp, err
 	}
 	if err.Error() == "304 Not Modified" {
 		return nil, nil
@@ -74,14 +76,14 @@ func Fetch(opts *FetchOptions) {
 	conn := s3.New(opts.Auth, aws.Regions[opts.Region])
 	bucket := conn.Bucket(opts.Bucket)
 
-	src, err := GetReaderETag(bucket, path, readMD5Sum(opts.Destination))
+	resp, err := GetReaderETag(bucket, path, readMD5Sum(opts.Destination))
 	if err != nil {
 		panic(err)
 	}
-	if src == nil {
+	if resp == nil {
 		return
 	}
-	defer src.Close()
+	defer resp.Body.Close()
 
 	tmpDst, err := ioutil.TempFile("", opts.Project)
 	if err != nil {
@@ -89,8 +91,12 @@ func Fetch(opts *FetchOptions) {
 	}
 	defer tmpDst.Close()
 
+	bar := pb.New(int(resp.ContentLength)).SetUnits(pb.U_BYTES)
+	bar.Start()
+	writer := io.MultiWriter(tmpDst, bar)
+
 	// write to temporary file
-	if _, err = io.Copy(tmpDst, src); err != nil {
+	if _, err = io.Copy(writer, resp.Body); err != nil {
 		panic(err)
 	}
 
