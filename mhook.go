@@ -8,10 +8,10 @@ import (
 	"github.com/crowdmob/goamz/aws"
 	"github.com/crowdmob/goamz/s3"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"time"
 )
 
@@ -71,10 +71,28 @@ func GetResponseETag(b *s3.Bucket, path string, etag string) (*http.Response, er
 	return nil, err
 }
 
+func targetPathExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
 func Fetch(opts *FetchOptions) {
 	path := fmt.Sprintf("/%s/%s/%s/%s", opts.Project, opts.Branch, opts.Commit, opts.Target)
 	conn := s3.New(opts.Auth, aws.Regions[opts.Region])
 	bucket := conn.Bucket(opts.Bucket)
+
+	targetPath := filepath.Dir(opts.Destination)
+	exists, err := targetPathExists(targetPath)
+	if !exists || err != nil {
+		fmt.Println("cowardly refusing to make destination directory ", targetPath)
+		return
+	}
 
 	resp, err := GetResponseETag(bucket, path, readMD5Sum(opts.Destination))
 	if err != nil {
@@ -85,23 +103,18 @@ func Fetch(opts *FetchOptions) {
 	}
 	defer resp.Body.Close()
 
-	tmpDst, err := ioutil.TempFile("", opts.Project)
+	dest, err := os.Create(opts.Destination)
 	if err != nil {
 		panic(err)
 	}
-	defer tmpDst.Close()
+	defer dest.Close()
 
 	bar := pb.New(int(resp.ContentLength)).SetUnits(pb.U_BYTES)
 	bar.Start()
-	writer := io.MultiWriter(tmpDst, bar)
+	writer := io.MultiWriter(dest, bar)
 
 	// write to temporary file
 	if _, err = io.Copy(writer, resp.Body); err != nil {
-		panic(err)
-	}
-
-	// atomically rename to destiation
-	if err = os.Rename(tmpDst.Name(), opts.Destination); err != nil {
 		panic(err)
 	}
 }
