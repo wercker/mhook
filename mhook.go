@@ -28,15 +28,12 @@ import (
 // s3://$bucket/$project/$branch/$commit/*	<- artifacts at commit id
 
 type FetchOptions struct {
-	Bucket       string
-	Project      string
-	Branch       string
-	Commit       string
-	Target       string
-	Destination  string
-	Auth         aws.Auth
-	Region       string
-	ShowProgress bool
+	Bucket      *s3.Bucket
+	Project     string
+	Branch      string
+	Commit      string
+	Target      string
+	Destination string
 }
 
 type Credentials struct {
@@ -84,10 +81,19 @@ func targetPathExists(path string) (bool, error) {
 	return false, err
 }
 
-func Fetch(opts *FetchOptions) {
-	path := fmt.Sprintf("/%s/%s/%s/%s", opts.Project, opts.Branch, opts.Commit, opts.Target)
-	conn := s3.New(opts.Auth, aws.Regions[opts.Region])
-	bucket := conn.Bucket(opts.Bucket)
+// Head prints the git hash of the latest version
+func Head(opts *FetchOptions) string {
+	path := fmt.Sprintf("/%s/%s/HEAD", opts.Project, opts.Branch)
+	data, err := opts.Bucket.Get(path)
+	if err != nil {
+		panic(err)
+	}
+	return string(data)
+}
+
+// Fetch fetches target from path specified in opts
+func Fetch(opts *FetchOptions, target string, showProgress bool) {
+	path := fmt.Sprintf("/%s/%s/%s/%s", opts.Project, opts.Branch, opts.Commit, target)
 
 	targetPath := filepath.Dir(opts.Destination)
 	exists, err := targetPathExists(targetPath)
@@ -96,7 +102,7 @@ func Fetch(opts *FetchOptions) {
 		return
 	}
 
-	resp, err := GetResponseETag(bucket, path, readMD5Sum(opts.Destination))
+	resp, err := GetResponseETag(opts.Bucket, path, readMD5Sum(opts.Destination))
 	if err != nil {
 		panic(err)
 	}
@@ -112,7 +118,7 @@ func Fetch(opts *FetchOptions) {
 	defer dest.Close()
 
 	bar := pb.New(int(resp.ContentLength)).SetUnits(pb.U_BYTES)
-	if opts.ShowProgress {
+	if showProgress {
 		bar.Start()
 	}
 	writer := io.MultiWriter(dest, bar)
@@ -123,50 +129,90 @@ func Fetch(opts *FetchOptions) {
 	}
 }
 
-func main() {
-	app := cli.NewApp()
-	app.Name = "mhook"
-	app.Usage = "[global options] path [dest]"
-	app.Flags = []cli.Flag{
+func getBucket(c *cli.Context) (*s3.Bucket, error) {
+	// This function checks the keys, the environment vars, the instance metadata, and a cred file
+	auth, err := aws.GetAuth(c.String("access-key"), c.String("secret-key"), "", time.Now().Add(time.Minute*5))
+	if err != nil {
+		return nil, err
+	}
+	conn := s3.New(auth, aws.Regions[c.String("region")])
+	bucket := conn.Bucket(c.String("bucket"))
+	return bucket, nil
+}
+
+func collectOptions(c *cli.Context) *FetchOptions {
+
+	if c.String("bucket") == "" {
+		println("Error: bucket cannot be empty.")
+		cli.ShowAppHelp(c)
+		os.Exit(1)
+	}
+
+	if c.String("project") == "" {
+		println("Error: project cannot be empty.")
+		cli.ShowAppHelp(c)
+		os.Exit(1)
+	}
+
+	bucket, err := getBucket(c)
+	if err != nil {
+		panic(err)
+	}
+
+	return &FetchOptions{
+		Bucket:  bucket,
+		Project: c.String("project"),
+		Branch:  c.String("branch"),
+		Commit:  c.String("commit"),
+	}
+}
+
+func globalFlags() []cli.Flag {
+	return []cli.Flag{
 		cli.StringFlag{Name: "bucket, b", Value: "", Usage: "S3 bucket"},
 		cli.StringFlag{Name: "project, p", Value: "", Usage: "project name"},
 		cli.StringFlag{Name: "branch, r", Value: "master", Usage: "git branch"},
-		cli.StringFlag{Name: "commit, c", Value: "latest", Usage: "git commit (or 'latest')"},
 		cli.StringFlag{Name: "access-key", Value: "", Usage: "AWS access key", EnvVar: "AWS_ACCESS_KEY_ID"},
 		cli.StringFlag{Name: "secret-key", Value: "", Usage: "AWS access key", EnvVar: "AWS_SECRET_ACCESS_KEY"},
 		cli.StringFlag{Name: "region", Value: "us-east-1", Usage: "AWS region"},
 	}
+}
+
+func fetchFlags() []cli.Flag {
+	flags := []cli.Flag{
+		cli.StringFlag{Name: "commit, c", Value: "latest", Usage: "git commit (or 'latest')"},
+	}
+	flags = append(flags, globalFlags()...)
+	return flags
+}
+
+func main() {
+	app := cli.NewApp()
+	app.Name = "mhook"
+	app.Usage = "[global options] path [dest]"
+	app.Flags = fetchFlags()
+	app.Commands = []cli.Command{
+		{
+			Name:  "head",
+			Usage: "print latest commit",
+			Action: func(c *cli.Context) {
+				opts := collectOptions(c)
+				fmt.Print(Head(opts))
+			},
+			Flags: globalFlags(),
+		},
+	}
 	app.Action = func(c *cli.Context) {
 		// Check for credentials and well-formedness, then call Fetch
-
-		if c.String("bucket") == "" {
-			println("Error: bucket cannot be empty.")
-			cli.ShowAppHelp(c)
-			os.Exit(1)
-		}
-
-		if c.String("project") == "" {
-			println("Error: project cannot be empty.")
-			cli.ShowAppHelp(c)
-			os.Exit(1)
-		}
 
 		if len(c.Args()) < 1 {
 			cli.ShowAppHelp(c)
 			os.Exit(1)
 		}
 
-		opts := &FetchOptions{
-			Target:       c.Args()[0],
-			Bucket:       c.String("bucket"),
-			Project:      c.String("project"),
-			Branch:       c.String("branch"),
-			Commit:       c.String("commit"),
-			Region:       c.String("region"),
-			ShowProgress: termutil.Isatty(os.Stdout.Fd()),
-		}
+		opts := collectOptions(c)
 
-		opts.Target = c.Args()[0]
+		target := c.Args()[0]
 
 		if len(c.Args()) < 2 {
 			// Our destination file will be the same name as our basename
@@ -175,14 +221,7 @@ func main() {
 			opts.Destination = c.Args()[1]
 		}
 
-		// This function checks the keys, the environment vars, the instance metadata, and a cred file
-		auth, err := aws.GetAuth(c.String("access-key"), c.String("secret-key"), "", time.Now().Add(time.Minute*5))
-		if err != nil {
-			panic(err)
-		}
-		opts.Auth = auth
-
-		Fetch(opts)
+		Fetch(opts, target, termutil.Isatty(os.Stdout.Fd()))
 	}
 
 	app.Run(os.Args)
