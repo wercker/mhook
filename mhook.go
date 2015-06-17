@@ -70,10 +70,10 @@ func GetResponseETag(b *s3.Bucket, path string, etag string) (*http.Response, er
 	return nil, err
 }
 
-func targetPathExists(path string) (bool, error) {
-	_, err := os.Stat(path)
+func targetPathWritable(path string) (bool, error) {
+	fi, err := os.Stat(path)
 	if err == nil {
-		return true, nil
+		return fi.IsDir(), nil
 	}
 	if os.IsNotExist(err) {
 		return false, nil
@@ -96,9 +96,9 @@ func Fetch(opts *FetchOptions, target string, showProgress bool) {
 	path := fmt.Sprintf("/%s/%s/%s/%s", opts.Project, opts.Branch, opts.Commit, target)
 
 	targetPath := filepath.Dir(opts.Destination)
-	exists, err := targetPathExists(targetPath)
-	if !exists || err != nil {
-		fmt.Println("cowardly refusing to make destination directory ", targetPath)
+	writable, err := targetPathWritable(targetPath)
+	if !writable || err != nil {
+		fmt.Printf("Cannot write to target `%s`. Please check that it exists and is writable.\n", targetPath)
 		return
 	}
 
