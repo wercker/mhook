@@ -3,17 +3,19 @@ package main
 import (
 	"crypto/md5"
 	"fmt"
-	"github.com/andrew-d/go-termutil"
-	"github.com/cheggaaa/pb"
-	"github.com/codegangsta/cli"
-	"github.com/crowdmob/goamz/aws"
-	"github.com/crowdmob/goamz/s3"
 	"io"
-	"net/http"
+	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
-	"time"
+
+	"github.com/andrew-d/go-termutil"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/cheggaaa/pb"
+	"github.com/codegangsta/cli"
 )
 
 // Simple command-line tool to fetch files from S3 that have been stored using
@@ -27,20 +29,21 @@ import (
 // s3://$bucket/$project/$branch/latest/*	<- latest artifacts
 // s3://$bucket/$project/$branch/$commit/*	<- artifacts at commit id
 
-type FetchOptions struct {
-	Bucket      *s3.Bucket
+type Fetcher struct {
+	S3          *s3.S3
+	Bucket      string
 	Project     string
 	Branch      string
 	Commit      string
-	Target      string
 	Destination string
 }
 
-type Credentials struct {
-	AccessKey    string
-	SecretKey    string
-	SessionToken string
-	Expiration   string
+func (f *Fetcher) HeadKey() *string {
+	return aws.String(fmt.Sprintf("/%s/%s/HEAD", f.Project, f.Branch))
+}
+
+func (f *Fetcher) Key(target string) *string {
+	return aws.String(fmt.Sprintf("/%s/%s/%s/%s", f.Project, f.Branch, f.Commit, target))
 }
 
 func readMD5Sum(path string) string {
@@ -57,19 +60,6 @@ func readMD5Sum(path string) string {
 	return fmt.Sprintf("%x", hasher.Sum(nil))
 }
 
-func GetResponseETag(b *s3.Bucket, path string, etag string) (*http.Response, error) {
-	headers := make(http.Header)
-	headers.Add("If-None-Match", etag)
-	resp, err := b.GetResponseWithHeaders(path, headers)
-	if resp != nil {
-		return resp, err
-	}
-	if err.Error() == "304 Not Modified" {
-		return nil, nil
-	}
-	return nil, err
-}
-
 func targetPathWritable(path string) (bool, error) {
 	fi, err := os.Stat(path)
 	if err == nil {
@@ -82,65 +72,92 @@ func targetPathWritable(path string) (bool, error) {
 }
 
 // Head prints the git hash of the latest version
-func Head(opts *FetchOptions) string {
-	path := fmt.Sprintf("/%s/%s/HEAD", opts.Project, opts.Branch)
-	data, err := opts.Bucket.Get(path)
+func Head(opts *Fetcher) string {
+	resp, err := opts.S3.GetObject(&s3.GetObjectInput{
+		Bucket: aws.String(opts.Bucket),
+		Key:    opts.HeadKey(),
+	})
 	if err != nil {
 		panic(err)
 	}
-	return string(data)
+
+	// Pretty-print the response data.
+	etag, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		panic(err)
+	}
+	return string(etag)
+}
+
+func targetSize(opts *Fetcher, target string) *int64 {
+	resp, err := opts.S3.HeadObject(&s3.HeadObjectInput{
+		Bucket: aws.String(opts.Bucket),
+		Key:    opts.Key(target),
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	return resp.ContentLength
+}
+
+type ProgressWriter struct {
+	w  io.WriterAt
+	pb *pb.ProgressBar
+}
+
+func (pw *ProgressWriter) WriteAt(p []byte, off int64) (int, error) {
+	pw.pb.Add(len(p))
+	return pw.w.WriteAt(p, off)
 }
 
 // Fetch fetches target from path specified in opts
-func Fetch(opts *FetchOptions, target string, showProgress bool) {
-	path := fmt.Sprintf("/%s/%s/%s/%s", opts.Project, opts.Branch, opts.Commit, target)
-
+func Fetch(opts *Fetcher, target string, showProgress bool) error {
 	targetPath := filepath.Dir(opts.Destination)
 	writable, err := targetPathWritable(targetPath)
 	if !writable || err != nil {
 		fmt.Printf("Cannot write to target `%s`. Please check that it exists and is writable.\n", targetPath)
-		return
+		return err
 	}
 
-	resp, err := GetResponseETag(opts.Bucket, path, readMD5Sum(opts.Destination))
+	temp, err := ioutil.TempFile(targetPath, fmt.Sprintf(".%s-", opts.Project))
 	if err != nil {
-		panic(err)
+		return err
 	}
-	if resp == nil {
-		return
-	}
-	defer resp.Body.Close()
+	defer temp.Close()
 
-	dest, err := os.Create(opts.Destination)
-	if err != nil {
-		panic(err)
-	}
-	defer dest.Close()
-
-	bar := pb.New(int(resp.ContentLength)).SetUnits(pb.U_BYTES)
+	bar := pb.New64(*targetSize(opts, target)).SetUnits(pb.U_BYTES)
 	if showProgress {
 		bar.Start()
 	}
-	writer := io.MultiWriter(dest, bar)
+	etag := readMD5Sum(opts.Destination)
+	writer := &ProgressWriter{temp, bar}
 
-	// write to temporary file
-	if _, err = io.Copy(writer, resp.Body); err != nil {
-		panic(err)
-	}
-}
-
-func getBucket(c *cli.Context) (*s3.Bucket, error) {
-	// This function checks the keys, the environment vars, the instance metadata, and a cred file
-	auth, err := aws.GetAuth(c.String("access-key"), c.String("secret-key"), "", time.Now().Add(time.Minute*5))
+	downloader := s3manager.NewDownloader(&s3manager.DownloadOptions{
+		S3: opts.S3,
+	})
+	_, err = downloader.Download(writer, &s3.GetObjectInput{
+		Bucket:      aws.String(opts.Bucket),
+		Key:         opts.Key(target),
+		IfNoneMatch: aws.String(etag),
+	})
 	if err != nil {
-		return nil, err
+		os.Remove(temp.Name())
+		if reqErr, ok := err.(awserr.RequestFailure); ok {
+			if reqErr.StatusCode() == 304 {
+				bar.Set64(bar.Total)
+				bar.FinishPrint("Using local copy.")
+				return nil
+			}
+			return reqErr
+		}
+		return err
 	}
-	conn := s3.New(auth, aws.Regions[c.String("region")])
-	bucket := conn.Bucket(c.String("bucket"))
-	return bucket, nil
+
+	return os.Rename(temp.Name(), opts.Destination)
 }
 
-func collectOptions(c *cli.Context) *FetchOptions {
+func collectOptions(c *cli.Context) *Fetcher {
 
 	if c.String("bucket") == "" {
 		println("Error: bucket cannot be empty.")
@@ -154,13 +171,10 @@ func collectOptions(c *cli.Context) *FetchOptions {
 		os.Exit(1)
 	}
 
-	bucket, err := getBucket(c)
-	if err != nil {
-		panic(err)
-	}
-
-	return &FetchOptions{
-		Bucket:  bucket,
+	svc := s3.New(&aws.Config{Region: c.String("region")})
+	return &Fetcher{
+		S3:      svc,
+		Bucket:  c.String("bucket"),
 		Project: c.String("project"),
 		Branch:  c.String("branch"),
 		Commit:  c.String("commit"),
@@ -172,8 +186,6 @@ func globalFlags() []cli.Flag {
 		cli.StringFlag{Name: "bucket, b", Value: "", Usage: "S3 bucket"},
 		cli.StringFlag{Name: "project, p", Value: "", Usage: "project name"},
 		cli.StringFlag{Name: "branch, r", Value: "master", Usage: "git branch"},
-		cli.StringFlag{Name: "access-key", Value: "", Usage: "AWS access key", EnvVar: "AWS_ACCESS_KEY_ID"},
-		cli.StringFlag{Name: "secret-key", Value: "", Usage: "AWS access key", EnvVar: "AWS_SECRET_ACCESS_KEY"},
 		cli.StringFlag{Name: "region", Value: "us-east-1", Usage: "AWS region"},
 	}
 }
@@ -211,18 +223,18 @@ func main() {
 		}
 
 		opts := collectOptions(c)
-
 		target := c.Args()[0]
 
 		if len(c.Args()) < 2 {
-			// Our destination file will be the same name as our basename
-			opts.Destination = path.Base(c.Args()[0])
+			// Our destination file will be the same name as our target basename
+			opts.Destination = path.Base(target)
 		} else {
 			opts.Destination = c.Args()[1]
 		}
 
-		Fetch(opts, target, termutil.Isatty(os.Stdout.Fd()))
+		if err := Fetch(opts, target, termutil.Isatty(os.Stdout.Fd())); err != nil {
+			panic(err)
+		}
 	}
-
 	app.Run(os.Args)
 }

@@ -2,7 +2,9 @@ package: main
 
 import:
   - package: github.com/codegangsta/cli
-  - package: github.com/AdRoll/goamz/aws
-  - package: github.com/AdRoll/goamz/s3
-  - package: github.com/cheggaaa/pb
+  - package: github.com/aws/aws-sdk-go/aws
+  - package: github.com/aws/aws-sdk-go/aws/awsutil
+  - package: github.com/aws/aws-sdk-go/service/s3/s3manager
+  - package: github.com/aws/aws-sdk-go/service/s3
   - package: github.com/andrew-d/go-termutil
+  - package: github.com/cheggaaa/pb
