@@ -232,6 +232,7 @@ func main() {
 			opts.Destination = c.Args()[1]
 		}
 
+		fmt.Printf("Downloading from %s\n", *opts.Key(target))
 		if err := Fetch(opts, target, termutil.Isatty(os.Stdout.Fd())); err != nil {
 			panic(err)
 		}
