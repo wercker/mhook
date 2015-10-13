@@ -12,6 +12,7 @@ import (
 	"github.com/andrew-d/go-termutil"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/cheggaaa/pb"
@@ -133,9 +134,7 @@ func Fetch(opts *Fetcher, target string, showProgress bool) error {
 	etag := readMD5Sum(opts.Destination)
 	writer := &ProgressWriter{temp, bar}
 
-	downloader := s3manager.NewDownloader(&s3manager.DownloadOptions{
-		S3: opts.S3,
-	})
+	downloader := s3manager.NewDownloaderWithClient(opts.S3)
 	_, err = downloader.Download(writer, &s3.GetObjectInput{
 		Bucket:      aws.String(opts.Bucket),
 		Key:         opts.Key(target),
@@ -170,8 +169,9 @@ func collectOptions(c *cli.Context) *Fetcher {
 		cli.ShowAppHelp(c)
 		os.Exit(1)
 	}
-
-	svc := s3.New(&aws.Config{Region: c.String("region")})
+	region := c.String("region")
+	sess := session.New(&aws.Config{Region: &region})
+	svc := s3.New(sess)
 	return &Fetcher{
 		S3:      svc,
 		Bucket:  c.String("bucket"),
