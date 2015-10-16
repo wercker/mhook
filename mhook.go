@@ -190,7 +190,7 @@ func globalFlags() []cli.Flag {
 	}
 }
 
-func fetchFlags() []cli.Flag {
+func downloadFlags() []cli.Flag {
 	flags := []cli.Flag{
 		cli.StringFlag{Name: "commit, c", Value: "latest", Usage: "git commit (or 'latest')"},
 	}
@@ -198,44 +198,71 @@ func fetchFlags() []cli.Flag {
 	return flags
 }
 
+func uploadFlags() []cli.Flag {
+	flags := []cli.Flag{
+		cli.StringFlag{Name: "commit, c", Value: "latest", Usage: "git commit (or 'latest')"},
+	}
+	flags = append(flags, globalFlags()...)
+	return flags
+}
+
+var (
+	headCommand = cli.Command{
+		Name:  "head",
+		Usage: "Print latest commit.",
+		Action: func(c *cli.Context) {
+			opts := collectOptions(c)
+			fmt.Print(Head(opts))
+		},
+		Flags: globalFlags(),
+	}
+	downloadCommand = cli.Command{
+		Name:  "download",
+		Usage: "Download mhook artifact.",
+		Action: func(c *cli.Context) {
+			// Check for credentials and well-formedness, then call Fetch
+
+			if len(c.Args()) < 1 {
+				cli.ShowAppHelp(c)
+				os.Exit(1)
+			}
+
+			opts := collectOptions(c)
+			target := c.Args()[0]
+
+			if len(c.Args()) < 2 {
+				// Our destination file will be the same name as our target basename
+				opts.Destination = path.Base(target)
+			} else {
+				opts.Destination = c.Args()[1]
+			}
+
+			fmt.Printf("Downloading from %s\n", *opts.Key(target))
+			if err := Fetch(opts, target, termutil.Isatty(os.Stdout.Fd())); err != nil {
+				panic(err)
+			}
+		},
+		Flags: downloadFlags(),
+	}
+	uploadCommand = cli.Command{
+		Name:  "upload",
+		Usage: "Upload mhook artifact.",
+		Action: func(c *cli.Context) {
+		},
+		Flags: uploadFlags(),
+	}
+)
+
 func main() {
 	app := cli.NewApp()
 	app.Name = "mhook"
-	app.Usage = "[global options] path [dest]"
-	app.Flags = fetchFlags()
+	app.Usage = "Manage the MUFL"
 	app.Commands = []cli.Command{
-		{
-			Name:  "head",
-			Usage: "print latest commit",
-			Action: func(c *cli.Context) {
-				opts := collectOptions(c)
-				fmt.Print(Head(opts))
-			},
-			Flags: globalFlags(),
-		},
+		headCommand,
+		downloadCommand,
+		uploadCommand,
 	}
 	app.Action = func(c *cli.Context) {
-		// Check for credentials and well-formedness, then call Fetch
-
-		if len(c.Args()) < 1 {
-			cli.ShowAppHelp(c)
-			os.Exit(1)
-		}
-
-		opts := collectOptions(c)
-		target := c.Args()[0]
-
-		if len(c.Args()) < 2 {
-			// Our destination file will be the same name as our target basename
-			opts.Destination = path.Base(target)
-		} else {
-			opts.Destination = c.Args()[1]
-		}
-
-		fmt.Printf("Downloading from %s\n", *opts.Key(target))
-		if err := Fetch(opts, target, termutil.Isatty(os.Stdout.Fd())); err != nil {
-			panic(err)
-		}
 	}
 	app.Run(os.Args)
 }

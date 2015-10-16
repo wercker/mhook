@@ -9,6 +9,7 @@ Where available it will attempt to use the EC2 metadata to get credentials.
 The MUFL layout::
 
   s3://$bucket/$project/$branch/HEAD        <- contains id of latest commit
+  s3://$bucket/$project/$branch/STABLE      <- contains id of latest commit
   s3://$bucket/$project/$branch/latest/*    <- latest artifacts
   s3://$bucket/$project/$branch/$commit/*   <- artifacts at commit id
 
@@ -18,6 +19,7 @@ Example::
   curl -o mhook https://s3.amazonaws.com/wercker-development/mhook/master/latest/linux_amd64/build
   chmod +x mhook
   ./mhook -b wercker-development -p mhook darwin_amd64/build mhook.darwin_amd64
+  ./mhook -b wercker-development -p mhook --tag stable darwin_amd64/build mhook.darwin_amd64
 
 
 Usage::
