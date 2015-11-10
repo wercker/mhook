@@ -2,9 +2,11 @@ package: main
 
 import:
   - package: github.com/codegangsta/cli
-  - package: github.com/aws/aws-sdk-go/aws
-  - package: github.com/aws/aws-sdk-go/aws/awsutil
-  - package: github.com/aws/aws-sdk-go/service/s3/s3manager
-  - package: github.com/aws/aws-sdk-go/service/s3
+  - package: github.com/aws/aws-sdk-go
+    ref: v0.10.2
+    vcs: git
+  # this is dependency of aws-sdk-go, but glide doesn't install it unless you
+  #   # explicitly define it :-/
+  - package: github.com/vaughan0/go-ini
   - package: github.com/andrew-d/go-termutil
   - package: github.com/cheggaaa/pb
