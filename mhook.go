@@ -130,7 +130,7 @@ func (m *Mhook) Upload(source string, prefix string) error {
 		reader := io.TeeReader(file, bar)
 		uploadInput := &s3manager.UploadInput{
 			Bucket: aws.String(m.Bucket),
-			Key:    m.Key(prefix + path),
+			Key:    m.Key(prefix + filepath.Base(path)),
 			Body:   reader,
 		}
 		fmt.Println(*uploadInput.Key)
