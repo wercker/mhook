@@ -100,6 +100,9 @@ func (m *Mhook) targetSize(target string) *int64 {
 		Key:    m.Key(target),
 	})
 	if err != nil {
+		if awsErr, ok := err.(awserr.Error); ok {
+			fmt.Println(awsErr.Message())
+		}
 		panic(err)
 	}
 
@@ -188,6 +191,23 @@ func (m *Mhook) Fetch(target string, destination string) error {
 	return os.Rename(temp.Name(), destination)
 }
 
+func getBucketLocation(requestRegion string, bucket string) (*string, error) {
+	sess := session.New(&aws.Config{Region: &requestRegion})
+	svc := s3.New(sess)
+
+	params := &s3.GetBucketLocationInput{
+		Bucket: aws.String(bucket), // Required
+	}
+	resp, err := svc.GetBucketLocation(params)
+
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+
+	return resp.LocationConstraint, nil
+}
+
 func collectOptions(c *cli.Context) *Mhook {
 
 	if c.String("bucket") == "" {
@@ -201,12 +221,16 @@ func collectOptions(c *cli.Context) *Mhook {
 		cli.ShowAppHelp(c)
 		os.Exit(1)
 	}
-	region := c.String("region")
-	sess := session.New(&aws.Config{Region: &region})
+	bucket := c.String("bucket")
+	region, err := getBucketLocation(c.String("region"), bucket)
+	if err != nil {
+		panic(err)
+	}
+	sess := session.New(&aws.Config{Region: region})
 	svc := s3.New(sess)
 	return &Mhook{
 		S3:           svc,
-		Bucket:       c.String("bucket"),
+		Bucket:       bucket,
 		Project:      c.String("project"),
 		Branch:       c.String("branch"),
 		Commit:       c.String("commit"),
