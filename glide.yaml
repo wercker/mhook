@@ -10,3 +10,5 @@ import:
   - package: github.com/vaughan0/go-ini
   - package: github.com/andrew-d/go-termutil
   - package: github.com/cheggaaa/pb
+    ref: 0947789f943d6187227e4c53061dafc5d762efef
+    vcs: git

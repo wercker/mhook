@@ -1,9 +1,10 @@
-box: tcnksm/gox@0.1.0
+box: tcnksm/gox:1.5
 build:
   steps:
-      - script:
-          name: install
-          code: go get -v -d ./...
+      - setup-go-workspace:
+          package-dir: github.com/wercker/mhook
+
+      - glide-install
 
       - golint
 
@@ -18,6 +19,7 @@ build:
               mv $WERCKER_OUTPUT_DIR/pkg $WERCKER_OUTPUT_DIR/latest
               cp -r $WERCKER_OUTPUT_DIR/latest $WERCKER_OUTPUT_DIR/$WERCKER_GIT_COMMIT
 deploy:
+  box: ubuntu:12.04
   steps:
     - s3sync:
         key-id: $AWS_ACCESS_KEY_ID
