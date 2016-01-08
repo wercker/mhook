@@ -30,6 +30,7 @@ import (
 // s3://$bucket/$project/$branch/latest/*	<- latest artifacts
 // s3://$bucket/$project/$branch/$commit/*	<- artifacts at commit id
 
+// Mhook represents the MUFL structure
 type Mhook struct {
 	S3           *s3.S3
 	Bucket       string
@@ -40,12 +41,14 @@ type Mhook struct {
 	ShowProgress bool
 }
 
-func (f *Mhook) HeadKey() *string {
-	return aws.String(fmt.Sprintf("/%s/%s/HEAD", f.Project, f.Branch))
+// HeadKey gets the key for the HEAD file
+func (m *Mhook) HeadKey() *string {
+	return aws.String(fmt.Sprintf("/%s/%s/HEAD", m.Project, m.Branch))
 }
 
-func (f *Mhook) Key(target string) *string {
-	return aws.String(fmt.Sprintf("/%s/%s/%s/%s", f.Project, f.Branch, f.Commit, target))
+// Key formats the key for target
+func (m *Mhook) Key(target string) *string {
+	return aws.String(fmt.Sprintf("/%s/%s/%s/%s", m.Project, m.Branch, m.Commit, target))
 }
 
 func readMD5Sum(path string) string {
@@ -103,16 +106,17 @@ func (m *Mhook) targetSize(target string) *int64 {
 	return resp.ContentLength
 }
 
-type ProgressWriter struct {
+type progressWriter struct {
 	w  io.WriterAt
 	pb *pb.ProgressBar
 }
 
-func (pw *ProgressWriter) WriteAt(p []byte, off int64) (int, error) {
+func (pw *progressWriter) WriteAt(p []byte, off int64) (int, error) {
 	pw.pb.Add(len(p))
 	return pw.w.WriteAt(p, off)
 }
 
+// Upload source to s3 in the MUFL format
 func (m *Mhook) Upload(source string, prefix string) error {
 	uploader := s3manager.NewUploaderWithClient(m.S3)
 	walk := func(path string, info os.FileInfo, err error) error {
@@ -160,7 +164,7 @@ func (m *Mhook) Fetch(target string, destination string) error {
 		bar.Start()
 	}
 	etag := readMD5Sum(destination)
-	writer := &ProgressWriter{temp, bar}
+	writer := &progressWriter{temp, bar}
 
 	downloader := s3manager.NewDownloaderWithClient(m.S3)
 	_, err = downloader.Download(writer, &s3.GetObjectInput{
