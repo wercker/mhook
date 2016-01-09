@@ -100,9 +100,6 @@ func (m *Mhook) targetSize(target string) *int64 {
 		Key:    m.Key(target),
 	})
 	if err != nil {
-		if awsErr, ok := err.(awserr.Error); ok {
-			fmt.Println(awsErr.Message())
-		}
 		panic(err)
 	}
 
@@ -196,7 +193,7 @@ func getBucketLocation(requestRegion string, bucket string) (*string, error) {
 	svc := s3.New(sess)
 
 	params := &s3.GetBucketLocationInput{
-		Bucket: aws.String(bucket), // Required
+		Bucket: aws.String(bucket),
 	}
 	resp, err := svc.GetBucketLocation(params)
 
