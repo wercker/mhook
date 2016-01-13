@@ -16,8 +16,7 @@ build:
           name: prepare
           code: |
               echo $WERCKER_GIT_COMMIT > $WERCKER_OUTPUT_DIR/HEAD
-              mv $WERCKER_OUTPUT_DIR/pkg $WERCKER_OUTPUT_DIR/latest
-              cp -r $WERCKER_OUTPUT_DIR/latest $WERCKER_OUTPUT_DIR/$WERCKER_GIT_COMMIT
+              mv $WERCKER_OUTPUT_DIR/pkg $WERCKER_OUTPUT_DIR/$WERCKER_GIT_COMMIT
 deploy:
   box: ubuntu:12.04
   steps:
@@ -27,3 +26,9 @@ deploy:
         bucket-url: $AWS_BUCKET_URL/$WERCKER_GIT_BRANCH/
         delete-removed: false
         source-dir: "."
+    - s3sync:
+        key-id: $AWS_ACCESS_KEY_ID
+        key-secret: $AWS_SECRET_ACCESS_KEY
+        bucket-url: $AWS_BUCKET_URL/$WERCKER_GIT_BRANCH/latest/
+        delete-removed: true
+        source-dir: "$WERCKER_GIT_COMMIT"
