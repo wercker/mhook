@@ -77,10 +77,10 @@ func targetPathWritable(path string) (bool, error) {
 }
 
 // Head prints the git hash of the latest version
-func Head(opts *Mhook) string {
-	resp, err := opts.S3.GetObject(&s3.GetObjectInput{
-		Bucket: aws.String(opts.Bucket),
-		Key:    opts.HeadKey(),
+func Head(m *Mhook) string {
+	resp, err := m.S3.GetObject(&s3.GetObjectInput{
+		Bucket: aws.String(m.Bucket),
+		Key:    m.HeadKey(),
 	})
 	if err != nil {
 		panic(err)
@@ -188,6 +188,15 @@ func (m *Mhook) Fetch(target string, destination string) error {
 	return os.Rename(temp.Name(), destination)
 }
 
+// Wait waits until timeout for the key to exist
+func (m *Mhook) Wait(target string) error {
+	return m.S3.WaitUntilObjectExists(&s3.HeadObjectInput{
+		Bucket: aws.String(m.Bucket),
+		Key:    m.Key(target),
+	})
+
+}
+
 func collectOptions(c *cli.Context) *Mhook {
 
 	if c.String("bucket") == "" {
@@ -223,15 +232,7 @@ func globalFlags() []cli.Flag {
 	}
 }
 
-func downloadFlags() []cli.Flag {
-	flags := []cli.Flag{
-		cli.StringFlag{Name: "commit, c", Value: "latest", Usage: "git commit (or 'latest')"},
-	}
-	flags = append(flags, globalFlags()...)
-	return flags
-}
-
-func uploadFlags() []cli.Flag {
+func targetFlags() []cli.Flag {
 	flags := []cli.Flag{
 		cli.StringFlag{Name: "commit, c", Value: "latest", Usage: "git commit (or 'latest')"},
 	}
@@ -248,6 +249,23 @@ var (
 			fmt.Print(Head(opts))
 		},
 		Flags: globalFlags(),
+	}
+	waitCommand = cli.Command{
+		Name:  "wait",
+		Usage: "Wait until key exists.",
+		Action: func(c *cli.Context) {
+			if !c.Args().Present() {
+				cli.ShowAppHelp(c)
+				os.Exit(1)
+			}
+			mhook := collectOptions(c)
+			target := c.Args().First()
+			if err := mhook.Wait(target); err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+		},
+		Flags: targetFlags(),
 	}
 	downloadCommand = cli.Command{
 		Name:      "download",
@@ -271,12 +289,22 @@ var (
 				destination = path.Base(target)
 			}
 
+			if c.Bool("wait") {
+				if err := mhook.Wait(target); err != nil {
+					fmt.Println(err)
+					os.Exit(1)
+				}
+			}
+
 			fmt.Printf("Downloading from %s\n", *mhook.Key(target))
 			if err := mhook.Fetch(target, destination); err != nil {
 				panic(err)
 			}
 		},
-		Flags: downloadFlags(),
+		Flags: append(
+			targetFlags(),
+			cli.BoolFlag{Name: "wait", Usage: "wait for key to exist before proceding."},
+		),
 	}
 	uploadCommand = cli.Command{
 		Name:      "upload",
@@ -295,7 +323,7 @@ var (
 				panic(err)
 			}
 		},
-		Flags: uploadFlags(),
+		Flags: targetFlags(),
 	}
 )
 
@@ -307,6 +335,7 @@ func main() {
 	app.Flags = downloadCommand.Flags
 	app.Commands = []cli.Command{
 		headCommand,
+		waitCommand,
 		downloadCommand,
 		uploadCommand,
 	}
