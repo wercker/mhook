@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/md5"
 	"fmt"
 	"io"
@@ -120,6 +121,9 @@ func (pw *progressWriter) WriteAt(p []byte, off int64) (int, error) {
 func (m *Mhook) Upload(source string, prefix string) error {
 	uploader := s3manager.NewUploaderWithClient(m.S3)
 	walk := func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
 		if info.IsDir() {
 			return nil
 		}
@@ -186,6 +190,27 @@ func (m *Mhook) Fetch(target string, destination string) error {
 	}
 
 	return os.Rename(temp.Name(), destination)
+}
+
+// ToLatest returns a copy of `m` with the Commit set to "latest"
+func (m *Mhook) ToLatest() *Mhook {
+	return &Mhook{
+		S3:      m.S3,
+		Bucket:  m.Bucket,
+		Project: m.Project,
+		Branch:  m.Branch,
+		Commit:  "latest",
+	}
+}
+
+// Write HEAD key
+func (m *Mhook) WriteHead() error {
+	_, err := m.S3.PutObject(&s3.PutObjectInput{
+		Bucket: aws.String(m.Bucket),
+		Key:    m.HeadKey(),
+		Body:   bytes.NewReader([]byte(m.Commit)),
+	})
+	return err
 }
 
 // Wait waits until timeout for the key to exist
@@ -322,8 +347,20 @@ var (
 			if err := mhook.Upload(source, prefix); err != nil {
 				panic(err)
 			}
+			if c.Bool("latest") {
+				if err := mhook.WriteHead(); err != nil {
+					panic(err)
+				}
+				if err := mhook.ToLatest().Upload(source, prefix); err != nil {
+					panic(err)
+				}
+			}
 		},
-		Flags: targetFlags(),
+		Flags: append(
+			targetFlags(),
+			cli.BoolFlag{Name: "latest", Usage: "Tag this upload as latest, " +
+				"copying it to the `latest` folder and creating a HEAD file."},
+		),
 	}
 )
 
