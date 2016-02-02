@@ -18,7 +18,7 @@ Example::
   curl -o mhook https://s3.amazonaws.com/wercker-development/mhook/master/latest/linux_amd64/build
   chmod +x mhook
   ./mhook -b wercker-development -p mhook darwin_amd64/build mhook.darwin_amd64
-  ./mhook -b wercker-development -p mhook --commit latest upload mhook.darwin_amd64 darwin_amd64/build/
+  ./mhook -b wercker-development -p mhook --commit c8as2qws upload mhook.darwin_amd64 darwin_amd64/build/ --latest
 
 
 Usage::
