@@ -14,7 +14,8 @@ build:
             cp linux-amd64/glide ./
             ./glide install --quick
 
-      - golint
+      - golint:
+            exclude: vendor
 
       - tcnksm/gox:
             os: "darwin linux"
