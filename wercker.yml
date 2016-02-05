@@ -20,6 +20,7 @@ build:
       - tcnksm/gox:
             os: "darwin linux"
             arch: "386 amd64"
+            ldflags: -X main.GitCommit=$WERCKER_GIT_COMMIT -X main.Compiled=$(date +%s)
 
       - script:
           name: prepare

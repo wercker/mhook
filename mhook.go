@@ -9,6 +9,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
+	"time"
 
 	"github.com/andrew-d/go-termutil"
 	"github.com/aws/aws-sdk-go/aws"
@@ -203,7 +205,7 @@ func (m *Mhook) ToLatest() *Mhook {
 	}
 }
 
-// Write HEAD key
+// WriteHead writes HEAD key in S3
 func (m *Mhook) WriteHead() error {
 	_, err := m.S3.PutObject(&s3.PutObjectInput{
 		Bucket: aws.String(m.Bucket),
@@ -364,11 +366,39 @@ var (
 	}
 )
 
+var (
+	// GitCommit is the git commit hash associated with this build.
+	GitCommit = "dev"
+
+	// Compiled is the unix timestamp when this binary got compiled.
+	Compiled = ""
+)
+
+// CompiledAt converts the Unix time Compiled to a time.Time using UTC timezone.
+func compiledAt() (*time.Time, error) {
+	i, err := strconv.ParseInt(Compiled, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	t := time.Unix(i, 0).UTC()
+
+	return &t, nil
+}
+
+func getVersion() string {
+	compiledWhen, err := compiledAt()
+	if err != nil {
+		return GitCommit
+	}
+	return fmt.Sprintf("%s (Compiled at: %s)", GitCommit, compiledWhen.Format(time.RFC3339))
+}
+
 func main() {
 	app := cli.NewApp()
 	app.Name = "mhook"
 	app.Usage = "Manage the MUFL"
 	// Set downloadCommand as default for backwards compatibility
+	app.Version = getVersion()
 	app.Flags = downloadCommand.Flags
 	app.Commands = []cli.Command{
 		headCommand,
