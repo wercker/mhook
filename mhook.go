@@ -68,17 +68,6 @@ func readMD5Sum(path string) string {
 	return fmt.Sprintf("%x", hasher.Sum(nil))
 }
 
-func targetPathWritable(path string) (bool, error) {
-	fi, err := os.Stat(path)
-	if err == nil {
-		return fi.IsDir(), nil
-	}
-	if os.IsNotExist(err) {
-		return false, nil
-	}
-	return false, err
-}
-
 // Head prints the git hash of the latest version
 func Head(m *Mhook) string {
 	resp, err := m.S3.GetObject(&s3.GetObjectInput{
@@ -95,18 +84,6 @@ func Head(m *Mhook) string {
 		panic(err)
 	}
 	return string(etag)
-}
-
-func (m *Mhook) targetSize(target string) *int64 {
-	resp, err := m.S3.HeadObject(&s3.HeadObjectInput{
-		Bucket: aws.String(m.Bucket),
-		Key:    m.Key(target),
-	})
-	if err != nil {
-		panic(err)
-	}
-
-	return resp.ContentLength
 }
 
 type progressWriter struct {
@@ -150,50 +127,6 @@ func (m *Mhook) Upload(source string, prefix string) error {
 	return filepath.Walk(filepath.Clean(source), walk)
 }
 
-// Fetch fetches target from path specified in opts
-func (m *Mhook) Fetch(target string, destination string) error {
-	targetPath := filepath.Dir(destination)
-	writable, err := targetPathWritable(targetPath)
-	if !writable || err != nil {
-		fmt.Printf("Cannot write to target `%s`. Please check that it exists and is writable.\n", targetPath)
-		return err
-	}
-
-	temp, err := ioutil.TempFile(targetPath, fmt.Sprintf(".%s-", m.Project))
-	if err != nil {
-		return err
-	}
-	defer temp.Close()
-
-	bar := pb.New64(*m.targetSize(target)).SetUnits(pb.U_BYTES)
-	if m.ShowProgress {
-		bar.Start()
-	}
-	etag := readMD5Sum(destination)
-	writer := &progressWriter{temp, bar}
-
-	downloader := s3manager.NewDownloaderWithClient(m.S3)
-	_, err = downloader.Download(writer, &s3.GetObjectInput{
-		Bucket:      aws.String(m.Bucket),
-		Key:         m.Key(target),
-		IfNoneMatch: aws.String(etag),
-	})
-	if err != nil {
-		os.Remove(temp.Name())
-		if reqErr, ok := err.(awserr.RequestFailure); ok {
-			if reqErr.StatusCode() == 304 {
-				bar.Set64(bar.Total)
-				bar.FinishPrint("Using local copy.")
-				return nil
-			}
-			return reqErr
-		}
-		return err
-	}
-
-	return os.Rename(temp.Name(), destination)
-}
-
 // ToLatest returns a copy of `m` with the Commit set to "latest"
 func (m *Mhook) ToLatest() *Mhook {
 	return &Mhook{
@@ -221,6 +154,88 @@ func (m *Mhook) Wait(target string) error {
 		Bucket: aws.String(m.Bucket),
 		Key:    m.Key(target),
 	})
+
+}
+
+func (m *Mhook) Download(target string, destination string) error {
+	manager := s3manager.NewDownloaderWithClient(m.S3)
+	prefix := (*m.Key(target))[1:]
+	d := downloader{
+		bucket:       m.Bucket,
+		dir:          destination,
+		Downloader:   manager,
+		showProgress: m.ShowProgress,
+		prefix:       prefix,
+	}
+	params := &s3.ListObjectsInput{
+		Bucket: &m.Bucket,
+		Prefix: &prefix,
+	}
+	return m.S3.ListObjectsPages(params, d.eachPage)
+}
+
+type downloader struct {
+	*s3manager.Downloader
+	bucket, dir, prefix string
+	showProgress        bool
+}
+
+func (d *downloader) eachPage(page *s3.ListObjectsOutput, more bool) bool {
+	for _, obj := range page.Contents {
+		if err := d.downloadToFile(*obj.Key, *obj.Size); err != nil {
+			panic(err)
+		}
+	}
+
+	return true
+}
+
+func (d *downloader) downloadToFile(key string, size int64) error {
+	// Create the directories in the path
+	file := filepath.Join(d.dir, key[len(d.prefix):])
+	targetPath := filepath.Dir(file)
+
+	if err := os.MkdirAll(targetPath, 0775); err != nil {
+		return err
+	}
+
+	temp, err := ioutil.TempFile(targetPath, "mhook-")
+	if err != nil {
+		return err
+	}
+	defer temp.Close()
+
+	bar := pb.New64(size).SetUnits(pb.U_BYTES)
+	if d.showProgress {
+		bar.Start()
+	}
+	etag := readMD5Sum(file)
+	writer := &progressWriter{temp, bar}
+
+	// Download the file using the AWS SDK
+	params := &s3.GetObjectInput{
+		Bucket:      &d.bucket,
+		Key:         &key,
+		IfNoneMatch: &etag,
+	}
+	if _, err := d.Download(writer, params); err != nil {
+		os.Remove(temp.Name())
+		if reqErr, ok := err.(awserr.RequestFailure); ok {
+			if reqErr.StatusCode() == 304 {
+				bar.Set64(bar.Total)
+				bar.FinishPrint(fmt.Sprintf("Using local copy for %s", file))
+				return nil
+			}
+			return reqErr
+		}
+		return err
+	}
+	bar.FinishPrint(fmt.Sprintf("Downloaded %s", file))
+
+	if err := os.Rename(temp.Name(), file); err != nil {
+		return err
+	}
+	return nil
 
 }
 
@@ -324,7 +339,7 @@ var (
 			}
 
 			fmt.Printf("Downloading from %s\n", *mhook.Key(target))
-			if err := mhook.Fetch(target, destination); err != nil {
+			if err := mhook.Download(target, destination); err != nil {
 				panic(err)
 			}
 		},

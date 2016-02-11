@@ -3,7 +3,7 @@ package: main
 import:
   - package: github.com/codegangsta/cli
   - package: github.com/aws/aws-sdk-go
-    ref: 6811074135399057ee6a6c457b2f23fbd6a067d6
+    ref: 1.1.1
     vcs: git
   - package: github.com/cheggaaa/pb
     ref: 0947789f943d6187227e4c53061dafc5d762efef
