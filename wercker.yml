@@ -17,10 +17,14 @@ build:
       - golint:
             exclude: vendor
 
-      - tcnksm/gox:
-            os: "darwin linux"
-            arch: "386 amd64"
-            ldflags: -X main.GitCommit=$WERCKER_GIT_COMMIT -X main.Compiled=$(date +%s)
+      - script:
+          name: gox
+          code: |-
+            gox \
+              -os="linux darwin" \
+              -arch="amd64" \
+              -output="$WERCKER_OUTPUT_DIR/pkg/{{.OS}}_{{.Arch}}/{{.Dir}}" \
+              -ldflags="-X main.GitCommit=$WERCKER_GIT_COMMIT -X main.Compiled=$(date +%s)"
 
       - script:
           name: prepare
