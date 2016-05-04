@@ -161,9 +161,9 @@ func (m *Mhook) Download(target string, destination string) error {
 	manager := s3manager.NewDownloaderWithClient(m.S3)
 	prefix := (*m.Key(target))[1:]
 	d := downloader{
+		Downloader:   manager,
 		bucket:       m.Bucket,
 		dir:          destination,
-		Downloader:   manager,
 		showProgress: m.ShowProgress,
 		prefix:       prefix,
 	}
@@ -171,22 +171,29 @@ func (m *Mhook) Download(target string, destination string) error {
 		Bucket: &m.Bucket,
 		Prefix: &prefix,
 	}
-	return m.S3.ListObjectsPages(params, d.eachPage)
+	if err := m.S3.ListObjectsPages(params, d.eachPage); err != nil {
+		return err
+	}
+	if d.err != nil {
+		return d.err
+	}
+	return nil
 }
 
 type downloader struct {
 	*s3manager.Downloader
 	bucket, dir, prefix string
 	showProgress        bool
+	err                 error
 }
 
 func (d *downloader) eachPage(page *s3.ListObjectsOutput, more bool) bool {
 	for _, obj := range page.Contents {
 		if err := d.downloadToFile(*obj.Key, *obj.Size); err != nil {
-			panic(err)
+			d.err = err
+			return false
 		}
 	}
-
 	return true
 }
 
@@ -204,6 +211,7 @@ func (d *downloader) downloadToFile(key string, size int64) error {
 		return err
 	}
 	defer temp.Close()
+	defer os.Remove(temp.Name())
 
 	bar := pb.New64(size).SetUnits(pb.U_BYTES)
 	if d.showProgress {
@@ -219,7 +227,6 @@ func (d *downloader) downloadToFile(key string, size int64) error {
 		IfNoneMatch: &etag,
 	}
 	if _, err := d.Download(writer, params); err != nil {
-		os.Remove(temp.Name())
 		if reqErr, ok := err.(awserr.RequestFailure); ok {
 			if reqErr.StatusCode() == 304 {
 				bar.Set64(bar.Total)
@@ -252,8 +259,11 @@ func collectOptions(c *cli.Context) *Mhook {
 		cli.ShowAppHelp(c)
 		os.Exit(1)
 	}
-	region := c.String("region")
-	sess := session.New(&aws.Config{Region: &region})
+	config := aws.NewConfig().WithRegion(c.String("region")).WithMaxRetries(10)
+	if c.Bool("debug") {
+		config = config.WithLogLevel(aws.LogDebugWithRequestRetries)
+	}
+	sess := session.New(config)
 	svc := s3.New(sess)
 	return &Mhook{
 		S3:           svc,
@@ -271,6 +281,7 @@ func globalFlags() []cli.Flag {
 		cli.StringFlag{Name: "project, p", Value: "", Usage: "project name"},
 		cli.StringFlag{Name: "branch, r", Value: "master", Usage: "git branch"},
 		cli.StringFlag{Name: "region", Value: "us-east-1", Usage: "AWS region"},
+		cli.BoolFlag{Name: "debug", Usage: "enable debug logging"},
 	}
 }
 
@@ -340,7 +351,15 @@ var (
 
 			fmt.Printf("Downloading from %s\n", *mhook.Key(target))
 			if err := mhook.Download(target, destination); err != nil {
-				panic(err)
+				if awsErr, ok := err.(awserr.Error); ok {
+					fmt.Println(awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
+					if reqErr, ok := err.(awserr.RequestFailure); ok {
+						fmt.Println(reqErr.StatusCode(), reqErr.RequestID())
+					}
+				} else {
+					fmt.Println(err.Error())
+				}
+				os.Exit(1)
 			}
 		},
 		Flags: append(
