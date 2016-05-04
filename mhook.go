@@ -158,10 +158,7 @@ func (m *Mhook) Wait(target string) error {
 }
 
 func (m *Mhook) Download(target string, destination string) error {
-	manager := s3manager.NewDownloaderWithClient(m.S3) /*, func(d *s3manager.Downloader) {
-		d.Concurrency = 100
-		d.PartSize = 1
-	})*/
+	manager := s3manager.NewDownloaderWithClient(m.S3)
 	prefix := (*m.Key(target))[1:]
 	d := downloader{
 		Downloader:   manager,
