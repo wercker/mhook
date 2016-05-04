@@ -267,7 +267,7 @@ func collectOptions(c *cli.Context) *Mhook {
 		cli.ShowAppHelp(c)
 		os.Exit(1)
 	}
-	config := aws.NewConfig().WithRegion(c.String("region"))
+	config := aws.NewConfig().WithRegion(c.String("region")).WithMaxRetries(10)
 	if c.Bool("debug") {
 		config = config.WithLogLevel(aws.LogDebugWithRequestRetries)
 	}
