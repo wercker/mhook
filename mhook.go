@@ -190,14 +190,6 @@ type downloader struct {
 func (d *downloader) eachPage(page *s3.ListObjectsOutput, more bool) bool {
 	for _, obj := range page.Contents {
 		if err := d.downloadToFile(*obj.Key, *obj.Size); err != nil {
-			if awsErr, ok := err.(awserr.Error); ok {
-				fmt.Println(awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
-				if reqErr, ok := err.(awserr.RequestFailure); ok {
-					fmt.Println(reqErr.StatusCode(), reqErr.RequestID())
-				}
-			} else {
-				fmt.Println(err.Error())
-			}
 			d.err = err
 			return false
 		}
@@ -359,7 +351,15 @@ var (
 
 			fmt.Printf("Downloading from %s\n", *mhook.Key(target))
 			if err := mhook.Download(target, destination); err != nil {
-				panic(err)
+				if awsErr, ok := err.(awserr.Error); ok {
+					fmt.Println(awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
+					if reqErr, ok := err.(awserr.RequestFailure); ok {
+						fmt.Println(reqErr.StatusCode(), reqErr.RequestID())
+					}
+				} else {
+					fmt.Println(err.Error())
+				}
+				os.Exit(1)
 			}
 		},
 		Flags: append(
