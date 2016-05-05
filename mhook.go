@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/andrew-d/go-termutil"
@@ -246,6 +247,13 @@ func (d *downloader) downloadToFile(key string, size int64) error {
 
 }
 
+func crStrippingLogger(args ...interface{}) {
+	r := strings.NewReplacer("\r\x0a", "\n")
+	s := fmt.Sprint(args...)
+	r.WriteString(os.Stdout, s)
+	fmt.Fprint(os.Stdout, "\n")
+}
+
 func collectOptions(c *cli.Context) *Mhook {
 
 	if c.String("bucket") == "" {
@@ -261,6 +269,7 @@ func collectOptions(c *cli.Context) *Mhook {
 	}
 	config := aws.NewConfig().WithRegion(c.String("region")).WithMaxRetries(10)
 	if c.Bool("debug") {
+		config = config.WithLogger(aws.LoggerFunc(crStrippingLogger))
 		config = config.WithLogLevel(aws.LogDebugWithRequestRetries)
 	}
 	sess := session.New(config)
