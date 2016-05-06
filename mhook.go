@@ -211,8 +211,8 @@ func (d *downloader) downloadToFile(key string, size int64) error {
 	if err != nil {
 		return err
 	}
-	defer temp.Close()
 	defer os.Remove(temp.Name())
+	defer temp.Close()
 
 	bar := pb.New64(size).SetUnits(pb.U_BYTES)
 	if d.showProgress {
@@ -360,6 +360,8 @@ var (
 
 			fmt.Printf("Downloading from %s\n", *mhook.Key(target))
 			if err := mhook.Download(target, destination); err != nil {
+				// temporary debug line
+				fmt.Printf("%#v\n", err)
 				if awsErr, ok := err.(awserr.Error); ok {
 					fmt.Println(awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
 					if reqErr, ok := err.(awserr.RequestFailure); ok {
