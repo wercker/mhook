@@ -204,12 +204,12 @@ func (d *downloader) downloadToFile(key string, size int64) error {
 	targetPath := filepath.Dir(file)
 
 	if err := os.MkdirAll(targetPath, 0775); err != nil {
-		return err
+		panic(err)
 	}
 
 	temp, err := ioutil.TempFile(targetPath, "mhook-")
 	if err != nil {
-		return err
+		panic(err)
 	}
 	defer os.Remove(temp.Name())
 	defer temp.Close()
@@ -234,14 +234,13 @@ func (d *downloader) downloadToFile(key string, size int64) error {
 				bar.FinishPrint(fmt.Sprintf("Using local copy for %s", file))
 				return nil
 			}
-			return reqErr
 		}
 		return err
 	}
 	bar.FinishPrint(fmt.Sprintf("Downloaded %s", file))
 
 	if err := os.Rename(temp.Name(), file); err != nil {
-		return err
+		panic(err)
 	}
 	return nil
 
