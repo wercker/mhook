@@ -360,7 +360,7 @@ var (
 			fmt.Printf("Downloading from %s\n", *mhook.Key(target))
 			if err := mhook.Download(target, destination); err != nil {
 				// temporary debug line
-				fmt.Printf("%#v\n", err)
+				fmt.Printf("mhook err %#v\n", err)
 				if awsErr, ok := err.(awserr.Error); ok {
 					fmt.Println(awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
 					if reqErr, ok := err.(awserr.RequestFailure); ok {
