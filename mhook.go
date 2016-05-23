@@ -20,7 +20,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/cheggaaa/pb"
-	"github.com/codegangsta/cli"
+	"gopkg.in/urfave/cli.v1"
 )
 
 // Simple command-line tool to fetch files from S3 that have been stored using
@@ -305,16 +305,17 @@ var (
 	headCommand = cli.Command{
 		Name:  "head",
 		Usage: "Print latest commit.",
-		Action: func(c *cli.Context) {
+		Action: func(c *cli.Context) error {
 			opts := collectOptions(c)
 			fmt.Print(Head(opts))
+			return nil
 		},
 		Flags: globalFlags(),
 	}
 	waitCommand = cli.Command{
 		Name:  "wait",
 		Usage: "Wait until key exists.",
-		Action: func(c *cli.Context) {
+		Action: func(c *cli.Context) error {
 			if !c.Args().Present() {
 				cli.ShowAppHelp(c)
 				os.Exit(1)
@@ -322,9 +323,9 @@ var (
 			mhook := collectOptions(c)
 			target := c.Args().First()
 			if err := mhook.Wait(target); err != nil {
-				fmt.Println(err)
-				os.Exit(1)
+				return err
 			}
+			return nil
 		},
 		Flags: targetFlags(),
 	}
@@ -332,7 +333,7 @@ var (
 		Name:      "download",
 		Usage:     "Download mhook artifact. If no destination is supplied, use the base path of the target.",
 		ArgsUsage: "<target> [destination]",
-		Action: func(c *cli.Context) {
+		Action: func(c *cli.Context) error {
 			// Check for credentials and well-formedness, then call Fetch
 
 			if !c.Args().Present() {
@@ -352,8 +353,7 @@ var (
 
 			if c.Bool("wait") {
 				if err := mhook.Wait(target); err != nil {
-					fmt.Println(err)
-					os.Exit(1)
+					return err
 				}
 			}
 
@@ -366,11 +366,10 @@ var (
 					if reqErr, ok := err.(awserr.RequestFailure); ok {
 						fmt.Println(reqErr.StatusCode(), reqErr.RequestID())
 					}
-				} else {
-					fmt.Println(err.Error())
 				}
-				os.Exit(1)
+				return err
 			}
+			return nil
 		},
 		Flags: append(
 			targetFlags(),
@@ -381,7 +380,7 @@ var (
 		Name:      "upload",
 		Usage:     "Upload mhook artifact.",
 		ArgsUsage: "<source> [upload prefix]",
-		Action: func(c *cli.Context) {
+		Action: func(c *cli.Context) error {
 			if !c.Args().Present() {
 				cli.ShowAppHelp(c)
 				os.Exit(1)
@@ -391,16 +390,17 @@ var (
 			prefix := c.Args().Get(1)
 			// if target is directory, upload it recursively
 			if err := mhook.Upload(source, prefix); err != nil {
-				panic(err)
+				return err
 			}
 			if c.Bool("latest") {
 				if err := mhook.WriteHead(); err != nil {
-					panic(err)
+					return err
 				}
 				if err := mhook.ToLatest().Upload(source, prefix); err != nil {
-					panic(err)
+					return err
 				}
 			}
+			return nil
 		},
 		Flags: append(
 			targetFlags(),
@@ -451,5 +451,9 @@ func main() {
 		uploadCommand,
 	}
 	app.Action = downloadCommand.Action
-	app.Run(os.Args)
+	err := app.Run(os.Args)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
 }
