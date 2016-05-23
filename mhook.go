@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"os"
 	"path"
 	"path/filepath"
@@ -179,6 +180,25 @@ func (m *Mhook) Download(target string, destination string) error {
 		return d.err
 	}
 	return nil
+}
+
+type retryable func() error
+
+type retryer struct {
+	maxTries int
+}
+
+func (r *retryer) Retry(f retryable) (err error) {
+	for i := 0; i < r.maxTries; i++ {
+		err = f()
+		if err == nil {
+			break
+		}
+		sleep := time.Duration((math.Pow(2, float64(i)))*200) * time.Millisecond
+		fmt.Printf("Request %d failed with %s. Sleeping %s before retry.\n", i+1, err, sleep)
+		time.Sleep(sleep)
+	}
+	return err
 }
 
 type downloader struct {
@@ -358,9 +378,12 @@ var (
 			}
 
 			fmt.Printf("Downloading from %s\n", *mhook.Key(target))
-			if err := mhook.Download(target, destination); err != nil {
-				// temporary debug line
-				fmt.Printf("mhook err %#v\n", err)
+			if c.Int("retries") < 1 {
+				return fmt.Errorf("Retries must be greater than 0")
+			}
+			re := &retryer{c.Int("retries")}
+
+			if err := re.Retry(func() error { return mhook.Download(target, destination) }); err != nil {
 				if awsErr, ok := err.(awserr.Error); ok {
 					fmt.Println(awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
 					if reqErr, ok := err.(awserr.RequestFailure); ok {
@@ -374,6 +397,7 @@ var (
 		Flags: append(
 			targetFlags(),
 			cli.BoolFlag{Name: "wait", Usage: "wait for key to exist before proceding."},
+			cli.IntFlag{Name: "retries", Usage: "Number of retries to make.", Value: 5},
 		),
 	}
 	uploadCommand = cli.Command{
