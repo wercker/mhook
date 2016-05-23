@@ -1,0 +1,45 @@
+hash: 4949f637b58b73f0431d8bf29ec24c38c60b85f94e816f450a779e093754df14
+updated: 2016-05-23T14:57:15.781112005-07:00
+imports:
+- name: github.com/andrew-d/go-termutil
+  version: 009166a695a2f516c749a26b4ac1f183d89aa336
+- name: github.com/aws/aws-sdk-go
+  version: 2cc71659118a868dc7544a7ef0808eb42d487011
+  vcs: git
+  subpackages:
+  - aws
+  - aws/awserr
+  - aws/session
+  - service/s3
+  - service/s3/s3manager
+  - aws/credentials
+  - aws/client
+  - aws/corehandlers
+  - aws/defaults
+  - aws/request
+  - private/endpoints
+  - aws/awsutil
+  - aws/client/metadata
+  - private/protocol
+  - private/protocol/restxml
+  - private/signer/v4
+  - private/waiter
+  - service/s3/s3iface
+  - aws/credentials/ec2rolecreds
+  - aws/ec2metadata
+  - private/protocol/query
+  - private/protocol/rest
+  - private/protocol/xml/xmlutil
+  - private/protocol/query/queryutil
+- name: github.com/cheggaaa/pb
+  version: 0947789f943d6187227e4c53061dafc5d762efef
+  vcs: git
+- name: github.com/go-ini/ini
+  version: 12f418cc7edc5a618a51407b7ac1f1f512139df3
+- name: github.com/jmespath/go-jmespath
+  version: 0b12d6b521d83fc7f755e7cfc1b1fbdd35a01a74
+- name: github.com/olekukonko/ts
+  version: ecf753e7c962639ab5a1fb46f7da627d4c0a04b8
+- name: gopkg.in/urfave/cli.v1
+  version: 01857ac33766ce0c93856370626f9799281c14f4
+devImports: []
