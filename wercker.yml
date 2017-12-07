@@ -23,6 +23,7 @@ build:
               -ldflags="-X main.GitCommit=$WERCKER_GIT_COMMIT -X main.Compiled=$(date +%s)" \
               -installsuffix cgo \
               -o "$WERCKER_OUTPUT_DIR/pkg/linux_amd64/mhook"
+          cp -r "$WERCKER_OUTPUT_DIR/pkg/linux_amd64/mhook" "$WERCKER_REPORT_ARTIFACTS_DIR"
 
     - script:
         name: prepare
