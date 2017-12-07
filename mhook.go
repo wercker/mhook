@@ -44,6 +44,7 @@ type Mhook struct {
 	Commit       string
 	Destination  string
 	ShowProgress bool
+	SingleObject bool
 }
 
 // HeadKey gets the key for the HEAD file
@@ -159,6 +160,8 @@ func (m *Mhook) Wait(target string) error {
 
 }
 
+// Download target to destination or download all objects under target to
+// destination, depending on m.SingleObject.
 func (m *Mhook) Download(target string, destination string) error {
 	manager := s3manager.NewDownloaderWithClient(m.S3)
 	prefix := (*m.Key(target))[1:]
@@ -169,6 +172,11 @@ func (m *Mhook) Download(target string, destination string) error {
 		showProgress: m.ShowProgress,
 		prefix:       prefix,
 	}
+
+	if m.SingleObject {
+		return d.downloadToFile(prefix, 0)
+	}
+
 	params := &s3.ListObjectsInput{
 		Bucket: &m.Bucket,
 		Prefix: &prefix,
@@ -262,8 +270,8 @@ func (d *downloader) downloadToFile(key string, size int64) error {
 	if err := os.Rename(temp.Name(), file); err != nil {
 		panic(err)
 	}
-	return nil
 
+	return nil
 }
 
 func crStrippingLogger(args ...interface{}) {
@@ -300,6 +308,7 @@ func collectOptions(c *cli.Context) *Mhook {
 		Branch:       c.String("branch"),
 		Commit:       c.String("commit"),
 		ShowProgress: termutil.Isatty(os.Stdout.Fd()),
+		SingleObject: c.Bool("single"),
 	}
 }
 
@@ -398,6 +407,7 @@ var (
 			targetFlags(),
 			cli.BoolFlag{Name: "wait", Usage: "wait for key to exist before proceding."},
 			cli.IntFlag{Name: "retries", Usage: "Number of retries to make.", Value: 5},
+			cli.BoolFlag{Name: "single", Usage: "download a single file (doesn't require ListObjects permission)"},
 		),
 	}
 	uploadCommand = cli.Command{
